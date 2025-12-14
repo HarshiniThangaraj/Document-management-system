@@ -1,0 +1,3 @@
+- [x] Enhance LoginGUI.java: Add hover effects to login and register buttons (color change on mouse enter/exit), round button corners, improve title label styling with gradient background.
+- [x] Enhance UserDashboard.java: Add a header panel displaying the user's email, add icons to upload and download buttons, enhance table appearance with better fonts and borders, add hover effects to buttons.
+- [x] Increase font sizes and make GUIs full screen: LoginGUI and UserDashboard.
