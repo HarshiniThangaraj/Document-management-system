@@ -1,0 +1,217 @@
+import sqlite3
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+
+# ---------- Center Window Function ----------
+def center_window(win, width, height):
+    screen_width = win.winfo_screenwidth()
+    screen_height = win.winfo_screenheight()
+    x = (screen_width // 2) - (width // 2)
+    y = (screen_height // 2) - (height // 2)
+    win.geometry(f"{width}x{height}+{x}+{y}")
+
+# ---------- Database Setup ----------
+def init_db():
+    conn = sqlite3.connect("library_system.db")
+    c = conn.cursor()
+
+    # Users Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL
+        )
+    ''')
+
+    # Books Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            author TEXT NOT NULL,
+            status TEXT DEFAULT 'available'
+        )
+    ''')
+
+    # Default admin
+    c.execute("SELECT * FROM users WHERE username = 'admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users VALUES (?, ?, ?)", ('admin', 'admin123', 'admin'))
+
+    conn.commit()
+    conn.close()
+
+# ---------- Registration Window ----------
+def register():
+    reg = tk.Toplevel()
+    reg.title("Register")
+    reg.geometry("500x520")
+    center_window(reg, 800, 220)
+
+    tk.Label(reg, text="Username", font=("Arial", 12)).pack()
+    username_entry = tk.Entry(reg, font=("Arial", 12))
+    username_entry.pack()
+
+    tk.Label(reg, text="Password", font=("Arial", 12)).pack()
+    password_entry = tk.Entry(reg, show="*", font=("Arial", 12))
+    password_entry.pack()
+
+    tk.Label(reg, text="Role", font=("Arial", 12)).pack()
+    role_var = tk.StringVar(value="user")
+    tk.OptionMenu(reg, role_var, "user", "admin").pack()
+
+    def save_user():
+        u = username_entry.get().strip()
+        p = password_entry.get().strip()
+        r = role_var.get()
+
+        if not u or not p:
+            messagebox.showerror("Error", "Fill all fields")
+            return
+
+        conn = sqlite3.connect("library_system.db")
+        c = conn.cursor()
+        try:
+            c.execute("INSERT INTO users VALUES (?, ?, ?)", (u, p, r))
+            conn.commit()
+            messagebox.showinfo("Success", f"{r.capitalize()} registered")
+            reg.destroy()
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Error", "Username already exists")
+        conn.close()
+
+    tk.Button(reg, text="Register", command=save_user, font=("Arial", 12)).pack(pady=10)
+
+# ---------- Login Function ----------
+def login():
+    u = username_entry.get()
+    p = password_entry.get()
+
+    conn = sqlite3.connect("library_system.db")
+    c = conn.cursor()
+    c.execute("SELECT role FROM users WHERE username=? AND password=?", (u, p))
+    user = c.fetchone()
+    conn.close()
+
+    if user:
+        role = user[0]
+        login_win.destroy()
+        open_main_window(u, role)
+    else:
+        messagebox.showerror("Login Failed", "Invalid credentials")
+
+# ---------- Main Window ----------
+def open_main_window(username, role):
+    main = tk.Tk()
+    main.title(f"Library System - {role.capitalize()}")
+    main.geometry("800x550")
+    center_window(main, 800, 550)
+
+    output = tk.Text(main, width=90, height=20, font=("Courier", 12))
+    output.pack(pady=10)
+
+    def view_books():
+        output.delete(1.0, tk.END)
+        conn = sqlite3.connect("library_system.db")
+        c = conn.cursor()
+        c.execute("SELECT * FROM books")
+        books = c.fetchall()
+        for book in books:
+            output.insert(tk.END, f"ID: {book[0]}, Title: {book[1]}, Author: {book[2]}, Status: {book[3]}\n")
+        conn.close()
+
+    def add_book():
+        title = simpledialog.askstring("Add Book", "Title:")
+        author = simpledialog.askstring("Add Book", "Author:")
+        if title and author:
+            conn = sqlite3.connect("library_system.db")
+            c = conn.cursor()
+            c.execute("INSERT INTO books (title, author) VALUES (?, ?)", (title, author))
+            conn.commit()
+            conn.close()
+            view_books()
+
+    def delete_book():
+        book_id = simpledialog.askinteger("Delete Book", "Enter Book ID:")
+        conn = sqlite3.connect("library_system.db")
+        c = conn.cursor()
+        c.execute("DELETE FROM books WHERE id=?", (book_id,))
+        conn.commit()
+        conn.close()
+        view_books()
+
+    def borrow_book():
+        book_id = simpledialog.askinteger("Borrow Book", "Enter Book ID:")
+        conn = sqlite3.connect("library_system.db")
+        c = conn.cursor()
+        c.execute("SELECT status FROM books WHERE id=?", (book_id,))
+        book = c.fetchone()
+        if book and book[0] == 'available':
+            c.execute("UPDATE books SET status='borrowed' WHERE id=?", (book_id,))
+            conn.commit()
+            messagebox.showinfo("Success", "Book borrowed")
+        else:
+            messagebox.showerror("Error", "Book not available")
+        conn.close()
+        view_books()
+
+    def return_book():
+        book_id = simpledialog.askinteger("Return Book", "Enter Book ID:")
+        conn = sqlite3.connect("library_system.db")
+        c = conn.cursor()
+        c.execute("SELECT status FROM books WHERE id=?", (book_id,))
+        book = c.fetchone()
+        if book and book[0] == 'borrowed':
+            c.execute("UPDATE books SET status='available' WHERE id=?", (book_id,))
+            conn.commit()
+            messagebox.showinfo("Success", "Book returned")
+        else:
+            messagebox.showerror("Error", "Book is not borrowed")
+        conn.close()
+        view_books()
+
+    def back_to_login():
+        main.destroy()
+        show_login_window()
+
+    btn_frame = tk.Frame(main)
+    btn_frame.pack()
+
+    tk.Button(btn_frame, text="View Books", command=view_books, font=("Arial", 12), width=15).grid(row=0, column=0, padx=5, pady=5)
+    tk.Button(btn_frame, text="Borrow Book", command=borrow_book, font=("Arial", 12), width=15).grid(row=0, column=1, padx=5, pady=5)
+    tk.Button(btn_frame, text="Return Book", command=return_book, font=("Arial", 12), width=15).grid(row=0, column=2, padx=5, pady=5)
+
+    if role == 'admin':
+        tk.Button(btn_frame, text="Add Book", command=add_book, font=("Arial", 12), width=15).grid(row=1, column=0, padx=5, pady=5)
+        tk.Button(btn_frame, text="Delete Book", command=delete_book, font=("Arial", 12), width=15).grid(row=1, column=1, padx=5, pady=5)
+
+    tk.Button(main, text="Back to Login", command=back_to_login, font=("Arial", 12)).pack(pady=10)
+
+    view_books()
+    main.mainloop()
+
+# ---------- Login Window ----------
+def show_login_window():
+    global username_entry, password_entry, login_win
+    login_win = tk.Tk()
+    login_win.title("Library Login")
+    login_win.geometry("400x800")
+    center_window(login_win, 800, 500)
+
+    tk.Label(login_win, text="Username", font=("Arial", 12)).pack(pady=(20, 5))
+    username_entry = tk.Entry(login_win, font=("Arial", 12))
+    username_entry.pack()
+
+    tk.Label(login_win, text="Password", font=("Arial", 12)).pack(pady=(10, 5))
+    password_entry = tk.Entry(login_win, show="*", font=("Arial", 12))
+    password_entry.pack()
+
+    tk.Button(login_win, text="Login", command=login, font=("Arial", 12)).pack(pady=10)
+    tk.Button(login_win, text="Register", command=register, font=("Arial", 12)).pack()
+
+    login_win.mainloop()
+
+# ---------- Start App ----------
+init_db()
+show_login_window()
